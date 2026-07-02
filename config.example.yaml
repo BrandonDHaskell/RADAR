@@ -1,0 +1,22 @@
+# Copy to ~/.config/radar/config.yaml (or point --config at your own copy).
+# Secrets never go here; they come from the environment (see .env.example).
+
+embedding:
+  provider: voyage
+  model: voyage-3
+  dimension: 1024  # must match the model above and the posting_embeddings column
+
+llm:
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+
+digest:
+  format: md
+  limit: 10
+  out_path: ~/radar-digest.md
+
+schedule:
+  sync_cron: "0 8 * * 6"   # Saturday 08:00
+  digest_cron: "0 8 * * 1" # Monday 08:00
+
+profile_path: ~/.config/radar/profile.json

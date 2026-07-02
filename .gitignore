@@ -1,0 +1,30 @@
+# Build artifacts
+/radar
+/bin/
+*.exe
+*.test
+*.out
+
+# Secrets and local config (real values, not the .example templates)
+.env
+.env.*
+!.env.example
+config.yaml
+!config.example.yaml
+
+# Real profile data (contains verified personal/resume info)
+profile.json
+!profile.example.json
+
+# Generated digests
+radar-digest.md
+radar-digest.html
+
+# Go
+/vendor/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
