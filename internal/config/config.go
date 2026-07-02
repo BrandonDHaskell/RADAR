@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -115,7 +116,29 @@ func Load(path string, mustExist bool) (*Config, error) {
 	cfg.Embedding.APIKey = os.Getenv("VOYAGE_API_KEY")
 	cfg.LLM.APIKey = os.Getenv("ANTHROPIC_API_KEY")
 
+	// YAML values are not shell-expanded the way CLI arguments are, so a
+	// literal "~" in config.yaml (as shown in config.example.yaml) must be
+	// expanded here or file paths like profile_path silently fail to open.
+	cfg.ProfilePath = expandHome(cfg.ProfilePath)
+	cfg.Digest.OutPath = expandHome(cfg.Digest.OutPath)
+
 	return &cfg, nil
+}
+
+// expandHome expands a leading "~" or "~/" in path to the user's home
+// directory. Paths without that prefix are returned unchanged.
+func expandHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 // RequireDatabase returns an error if no database URL is configured. Callers
