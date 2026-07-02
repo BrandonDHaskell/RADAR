@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
 	"github.com/BrandonDHaskell/RADAR/internal/config"
+	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
 var (
@@ -35,4 +38,13 @@ func init() {
 // via --help while each command is implemented phase by phase.
 func notImplemented(cmd *cobra.Command, args []string) error {
 	return fmt.Errorf("%s: not yet implemented", cmd.CommandPath())
+}
+
+// openDB requires a configured DATABASE_URL, applies pending migrations, and
+// returns a ready connection pool. Callers are responsible for closing it.
+func openDB(ctx context.Context) (*pgxpool.Pool, error) {
+	if err := cfg.RequireDatabase(); err != nil {
+		return nil, err
+	}
+	return store.Open(ctx, cfg.Database.URL)
 }
