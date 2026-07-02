@@ -76,6 +76,28 @@ func TestCompanyCRUD(t *testing.T) {
 	}
 }
 
+func TestSetCompanyStatusRejectsRemovedActiveStatus(t *testing.T) {
+	pool := openTestPool(t)
+	ctx := context.Background()
+	token := fmt.Sprintf("test-%d", time.Now().UnixNano())
+
+	created, err := store.CreateCompany(ctx, pool, store.NewCompany{
+		Name:     "Status Check Co",
+		ATSType:  "greenhouse",
+		ATSToken: token,
+	})
+	if err != nil {
+		t.Fatalf("CreateCompany: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), "DELETE FROM companies WHERE id = $1", created.ID)
+	})
+
+	if _, err := store.SetCompanyStatus(ctx, pool, created.ID, "active"); err == nil {
+		t.Error("SetCompanyStatus(active) succeeded, want a CHECK constraint error since active was removed")
+	}
+}
+
 func containsCompany(companies []store.Company, id int64) bool {
 	for _, c := range companies {
 		if c.ID == id {

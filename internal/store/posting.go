@@ -88,6 +88,18 @@ func UpsertPosting(ctx context.Context, pool *pgxpool.Pool, p PostingUpsert) (Po
 	return res, nil
 }
 
+// CountOpenPostings returns how many open postings exist for a company/source.
+func CountOpenPostings(ctx context.Context, pool *pgxpool.Pool, companyID int64, source string) (int64, error) {
+	var count int64
+	err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM postings WHERE company_id = $1 AND source = $2 AND is_open = true
+	`, companyID, source).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting open postings for company %d/%s: %w", companyID, source, err)
+	}
+	return count, nil
+}
+
 // ExpirePostings marks postings for (companyID, source) closed if their
 // external_id is not present in openExternalIDs, i.e. they no longer appear
 // in the source's current listing. It returns the number of rows closed.

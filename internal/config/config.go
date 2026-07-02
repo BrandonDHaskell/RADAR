@@ -89,17 +89,23 @@ func DefaultPath() string {
 	return filepath.Join(home, ".config", "radar", "config.yaml")
 }
 
-// Load reads the YAML config at path (if it exists), applies defaults for
-// anything unset, and overlays secrets and the database URL from the
-// environment. A missing file at path is not an error; RADAR falls back to
-// defaults, which is convenient for first-run and for tests.
-func Load(path string) (*Config, error) {
+// Load reads the YAML config at path, applies defaults for anything unset,
+// and overlays secrets and the database URL from the environment. If
+// mustExist is false, a missing file at path is not an error and RADAR
+// falls back to defaults, which is convenient for the default path and for
+// tests. If mustExist is true (an operator explicitly passed --config), a
+// missing file is an error naming the path, since a silent fallback there
+// would hide a typo.
+func Load(path string, mustExist bool) (*Config, error) {
 	cfg := defaults()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading config %s: %w", path, err)
+		}
+		if mustExist {
+			return nil, fmt.Errorf("config file %s does not exist", path)
 		}
 	} else if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)

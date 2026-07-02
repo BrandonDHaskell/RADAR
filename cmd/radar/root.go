@@ -20,7 +20,8 @@ var rootCmd = &cobra.Command{
 	Use:   "radar",
 	Short: "RADAR aggregates, ranks, and tracks job postings against your profile.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		loaded, err := config.Load(cfgPath)
+		mustExist := cmd.Flags().Changed("config")
+		loaded, err := config.Load(cfgPath, mustExist)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
