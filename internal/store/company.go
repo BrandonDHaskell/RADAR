@@ -14,11 +14,13 @@ import (
 // ValidATSTypes are the ats_type values accepted by the companies table.
 var ValidATSTypes = []string{"greenhouse", "lever", "ashby", "workable", "none"}
 
-// CompanyStatuses are the status values a company can hold.
+// CompanyStatuses are the status values a company can hold. Status answers
+// exactly one question: should sync consider this board (confirmed) or not
+// (candidate, archived). Engagement with a company lives in applications,
+// not here.
 const (
 	CompanyStatusCandidate = "candidate"
 	CompanyStatusConfirmed = "confirmed"
-	CompanyStatusActive    = "active"
 	CompanyStatusArchived  = "archived"
 )
 

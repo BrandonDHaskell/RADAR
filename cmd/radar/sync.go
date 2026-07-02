@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	syncSource  string
-	syncCompany int64
-	syncSince   string
+	syncSource     string
+	syncCompany    int64
+	syncSince      string
+	syncAllowEmpty bool
 )
 
 // syncFetchers maps ats_type to its Fetcher. Only greenhouse is implemented
@@ -59,6 +60,10 @@ var syncCmd = &cobra.Command{
 			if !ok {
 				continue // no adapter for this company's ATS yet
 			}
+			if c.ATSToken == "" {
+				fmt.Fprintf(os.Stderr, "warning: %s has ats_type %s but no token, skipping\n", c.Name, c.ATSType)
+				continue
+			}
 			fetcher := newFetcher(client)
 
 			postings, err := fetcher.Fetch(ctx, c.ATSToken)
@@ -67,12 +72,18 @@ var syncCmd = &cobra.Command{
 				continue
 			}
 
-			result, err := dedup.Sync(ctx, pool, c.ID, fetcher.Source(), c.Name, postings)
+			result, err := dedup.Sync(ctx, pool, c.ID, fetcher.Source(), c.Name, postings, syncAllowEmpty)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sync %s: %v\n", c.Name, err)
 				continue
 			}
 			synced++
+			if result.ExpirySkipped {
+				fmt.Fprintf(os.Stderr,
+					"warning: %s returned 0 postings but %d are open; skipped closing them (re-run with --allow-empty if the board is truly empty)\n",
+					c.Name, result.OpenAtSkip)
+				continue
+			}
 			fmt.Printf("%s: %d new, %d updated, %d unchanged, %d closed\n",
 				c.Name, result.Inserted, result.Updated, result.Unchanged, result.Closed)
 		}
@@ -88,5 +99,6 @@ func init() {
 	syncCmd.Flags().StringVar(&syncSource, "source", "", "limit sync to one ATS (greenhouse|lever|ashby|workable)")
 	syncCmd.Flags().Int64Var(&syncCompany, "company", 0, "limit sync to one company id")
 	syncCmd.Flags().StringVar(&syncSince, "since", "", "only re-check companies last synced before this duration ago (not yet implemented)")
+	syncCmd.Flags().BoolVar(&syncAllowEmpty, "allow-empty", false, "allow a 0-posting fetch to close all open postings for that company/source")
 	rootCmd.AddCommand(syncCmd)
 }

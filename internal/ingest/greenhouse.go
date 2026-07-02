@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -43,8 +45,8 @@ type greenhouseNamed struct {
 // Fetch pulls all published postings for a single Greenhouse board token,
 // e.g. https://boards-api.greenhouse.io/v1/boards/{atsToken}/jobs?content=true.
 func (f *GreenhouseFetcher) Fetch(ctx context.Context, atsToken string) ([]NormalizedPosting, error) {
-	url := fmt.Sprintf("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true", atsToken)
-	body, err := f.client.Get(ctx, url)
+	reqURL := fmt.Sprintf("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true", url.PathEscape(atsToken))
+	body, err := f.client.Get(ctx, reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching greenhouse board %q: %w", atsToken, err)
 	}
@@ -73,12 +75,15 @@ func normalizeGreenhouseJob(job greenhouseJob) NormalizedPosting {
 	}
 
 	return NormalizedPosting{
-		ExternalID:      strconv.FormatInt(job.ID, 10),
-		Title:           job.Title,
-		Location:        job.Location.Name,
-		IsRemote:        strings.Contains(strings.ToLower(job.Location.Name), "remote"),
-		Department:      department,
-		Description:     job.Content,
+		ExternalID: strconv.FormatInt(job.ID, 10),
+		Title:      job.Title,
+		Location:   job.Location.Name,
+		IsRemote:   strings.Contains(strings.ToLower(job.Location.Name), "remote"),
+		Department: department,
+		// Greenhouse returns content HTML-entity-escaped, e.g. "&lt;p&gt;...".
+		// One UnescapeString undoes that encoding to real HTML, then
+		// htmlToText flattens the HTML itself into plain text.
+		Description:     htmlToText(html.UnescapeString(job.Content)),
 		ApplyURL:        job.AbsoluteURL,
 		SourceURL:       job.AbsoluteURL,
 		SourceUpdatedAt: updatedAt,

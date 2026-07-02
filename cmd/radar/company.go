@@ -63,10 +63,10 @@ var companyListCmd = &cobra.Command{
 	Short: "List companies",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if companyListStatus != "" && !slices.Contains(
-			[]string{store.CompanyStatusCandidate, store.CompanyStatusConfirmed, store.CompanyStatusActive, store.CompanyStatusArchived},
+			[]string{store.CompanyStatusCandidate, store.CompanyStatusConfirmed, store.CompanyStatusArchived},
 			companyListStatus,
 		) {
-			return fmt.Errorf("--status must be one of candidate|confirmed|active|archived")
+			return fmt.Errorf("--status must be one of candidate|confirmed|archived")
 		}
 
 		ctx := cmd.Context()
@@ -142,7 +142,7 @@ func init() {
 	companyAddCmd.Flags().StringVar(&companyAddNotes, "notes", "", "free-form notes")
 	_ = companyAddCmd.MarkFlagRequired("name")
 
-	companyListCmd.Flags().StringVar(&companyListStatus, "status", "", "filter by status: candidate|confirmed|active|archived")
+	companyListCmd.Flags().StringVar(&companyListStatus, "status", "", "filter by status: candidate|confirmed|archived")
 
 	companyCmd.AddCommand(companyAddCmd, companyListCmd, companyConfirmCmd, companyArchiveCmd)
 	rootCmd.AddCommand(companyCmd)
