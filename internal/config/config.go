@@ -63,7 +63,7 @@ func defaults() Config {
 	return Config{
 		Embedding: EmbeddingConfig{
 			Provider:  "voyage",
-			Model:     "voyage-3",
+			Model:     "voyage-4",
 			Dimension: 1024,
 		},
 		LLM: LLMConfig{
@@ -123,6 +123,16 @@ func Load(path string, mustExist bool) (*Config, error) {
 func (c *Config) RequireDatabase() error {
 	if c.Database.URL == "" {
 		return fmt.Errorf("DATABASE_URL is not set")
+	}
+	return nil
+}
+
+// RequireEmbedding returns an error if no Voyage API key is configured.
+// Callers that need to call the embedding provider should call this before
+// using cfg.Embedding.APIKey.
+func (c *Config) RequireEmbedding() error {
+	if c.Embedding.APIKey == "" {
+		return fmt.Errorf("VOYAGE_API_KEY is not set")
 	}
 	return nil
 }

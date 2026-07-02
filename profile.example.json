@@ -1,11 +1,31 @@
 {
   "summary": "PLACEHOLDER: one to three sentences describing your verified background.",
-  "role_tags": [
-    "business-systems-analyst",
-    "implementation-specialist",
-    "technical-program-manager",
-    "technical-support-engineer",
-    "automation-engineer"
+  "roles": [
+    {
+      "tag": "business-systems-analyst",
+      "label": "Business Systems Analyst",
+      "summary": "PLACEHOLDER: a role-tag-specific framing of your background, used for matching and for the LLM's fit reasoning."
+    },
+    {
+      "tag": "implementation-specialist",
+      "label": "Implementation Specialist",
+      "summary": "PLACEHOLDER"
+    },
+    {
+      "tag": "technical-program-manager",
+      "label": "Technical Program Manager",
+      "summary": "PLACEHOLDER"
+    },
+    {
+      "tag": "technical-support-engineer",
+      "label": "Technical Support Engineer",
+      "summary": "PLACEHOLDER"
+    },
+    {
+      "tag": "automation-engineer",
+      "label": "Automation Engineer",
+      "summary": "PLACEHOLDER"
+    }
   ],
   "verified_skills": [
     "PLACEHOLDER: only list skills you can defend in a technical follow-up"

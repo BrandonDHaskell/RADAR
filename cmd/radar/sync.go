@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
 	"github.com/BrandonDHaskell/RADAR/internal/dedup"
+	"github.com/BrandonDHaskell/RADAR/internal/embed"
 	"github.com/BrandonDHaskell/RADAR/internal/ingest"
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
@@ -34,6 +37,9 @@ var syncCmd = &cobra.Command{
 				return fmt.Errorf("--source %q is not implemented yet", syncSource)
 			}
 		}
+		if err := cfg.RequireEmbedding(); err != nil {
+			return err
+		}
 
 		ctx := cmd.Context()
 		pool, err := openDB(ctx)
@@ -48,6 +54,8 @@ var syncCmd = &cobra.Command{
 		}
 
 		client := ingest.NewClient(2, 4, 20*time.Second)
+		embedder := embed.NewVoyageProvider(cfg.Embedding.APIKey, cfg.Embedding.Model, cfg.Embedding.Dimension)
+
 		var synced int
 		for _, c := range companies {
 			if syncCompany != 0 && c.ID != syncCompany {
@@ -84,8 +92,29 @@ var syncCmd = &cobra.Command{
 					c.Name, result.OpenAtSkip)
 				continue
 			}
-			fmt.Printf("%s: %d new, %d updated, %d unchanged, %d closed\n",
-				c.Name, result.Inserted, result.Updated, result.Unchanged, result.Closed)
+
+			embedded, err := embedPostings(ctx, pool, embedder, cfg.Embedding.Model, result.ToEmbed)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "sync %s: embedding: %v\n", c.Name, err)
+			}
+
+			// Catch postings still missing an embedding: either an embed
+			// call above just failed, or a previous run's did. dedup only
+			// re-queues content that changed, so this backfill is what
+			// makes an embedding failure self-healing on the next sync.
+			missing, err := store.PostingsMissingEmbedding(ctx, pool, c.ID, fetcher.Source())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "sync %s: checking for missing embeddings: %v\n", c.Name, err)
+			} else if len(missing) > 0 {
+				backfilled, err := embedPostings(ctx, pool, embedder, cfg.Embedding.Model, missingToCandidates(missing))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "sync %s: backfilling embeddings: %v\n", c.Name, err)
+				}
+				embedded += backfilled
+			}
+
+			fmt.Printf("%s: %d new, %d updated, %d unchanged, %d closed, %d embedded\n",
+				c.Name, result.Inserted, result.Updated, result.Unchanged, result.Closed, embedded)
 		}
 
 		if synced == 0 {
@@ -93,6 +122,47 @@ var syncCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// embedPostings embeds each candidate's text and stores the resulting
+// vector, returning how many were successfully embedded.
+func embedPostings(ctx context.Context, pool *pgxpool.Pool, provider embed.Provider, model string, candidates []dedup.EmbedCandidate) (int, error) {
+	if len(candidates) == 0 {
+		return 0, nil
+	}
+
+	texts := make([]string, len(candidates))
+	for i, c := range candidates {
+		texts[i] = c.Text
+	}
+
+	vectors, err := provider.Embed(ctx, texts, embed.InputTypeDocument)
+	if err != nil {
+		return 0, err
+	}
+
+	var embedded int
+	for i, c := range candidates {
+		if err := store.UpsertPostingEmbedding(ctx, pool, c.PostingID, vectors[i], model); err != nil {
+			return embedded, err
+		}
+		embedded++
+	}
+	return embedded, nil
+}
+
+// missingToCandidates builds embed candidates for postings found by
+// store.PostingsMissingEmbedding, using the same text format as dedup.Sync's
+// own change-driven candidates.
+func missingToCandidates(missing []store.PostingToEmbed) []dedup.EmbedCandidate {
+	candidates := make([]dedup.EmbedCandidate, len(missing))
+	for i, p := range missing {
+		candidates[i] = dedup.EmbedCandidate{
+			PostingID: p.PostingID,
+			Text:      dedup.FormatEmbeddingText(p.CompanyName, p.Title, p.Department, p.Location, p.Description),
+		}
+	}
+	return candidates
 }
 
 func init() {
