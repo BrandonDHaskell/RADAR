@@ -12,6 +12,8 @@ import (
 	"github.com/BrandonDHaskell/RADAR/internal/dedup"
 	"github.com/BrandonDHaskell/RADAR/internal/embed"
 	"github.com/BrandonDHaskell/RADAR/internal/ingest"
+	"github.com/BrandonDHaskell/RADAR/internal/llm"
+	"github.com/BrandonDHaskell/RADAR/internal/match"
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
@@ -40,6 +42,14 @@ var syncCmd = &cobra.Command{
 		if err := cfg.RequireEmbedding(); err != nil {
 			return err
 		}
+		if err := cfg.RequireLLM(); err != nil {
+			return err
+		}
+
+		profile, err := match.LoadProfile(cfg.ProfilePath)
+		if err != nil {
+			return fmt.Errorf("loading profile: %w", err)
+		}
 
 		ctx := cmd.Context()
 		pool, err := openDB(ctx)
@@ -55,6 +65,7 @@ var syncCmd = &cobra.Command{
 
 		client := ingest.NewClient(2, 4, 20*time.Second)
 		embedder := embed.NewVoyageProvider(cfg.Embedding.APIKey, cfg.Embedding.Model, cfg.Embedding.Dimension)
+		llmProvider := llm.NewAnthropicProvider(cfg.LLM.APIKey, cfg.LLM.Model)
 
 		var synced int
 		for _, c := range companies {
@@ -102,19 +113,36 @@ var syncCmd = &cobra.Command{
 			// call above just failed, or a previous run's did. dedup only
 			// re-queues content that changed, so this backfill is what
 			// makes an embedding failure self-healing on the next sync.
-			missing, err := store.PostingsMissingEmbedding(ctx, pool, c.ID, fetcher.Source())
+			missingEmbeddings, err := store.PostingsMissingEmbedding(ctx, pool, c.ID, fetcher.Source())
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sync %s: checking for missing embeddings: %v\n", c.Name, err)
-			} else if len(missing) > 0 {
-				backfilled, err := embedPostings(ctx, pool, embedder, cfg.Embedding.Model, missingToCandidates(missing))
+			} else if len(missingEmbeddings) > 0 {
+				backfilled, err := embedPostings(ctx, pool, embedder, cfg.Embedding.Model, missingToCandidates(missingEmbeddings))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "sync %s: backfilling embeddings: %v\n", c.Name, err)
 				}
 				embedded += backfilled
 			}
 
-			fmt.Printf("%s: %d new, %d updated, %d unchanged, %d closed, %d embedded\n",
-				c.Name, result.Inserted, result.Updated, result.Unchanged, result.Closed, embedded)
+			scoreIDs := changedPostingIDs(result.ToEmbed)
+			missingScores, err := store.PostingsMissingFitScore(ctx, pool, c.ID, fetcher.Source())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "sync %s: checking for missing fit scores: %v\n", c.Name, err)
+			} else {
+				scoreIDs = dedupeIDs(scoreIDs, missingScores)
+			}
+
+			var scoreResult match.ScoreResult
+			if len(scoreIDs) > 0 {
+				scoreResult, err = match.ScorePostings(ctx, pool, embedder, llmProvider, cfg.LLM.Model, profile, scoreIDs)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "sync %s: scoring: %v\n", c.Name, err)
+				}
+			}
+
+			fmt.Printf("%s: %d new, %d updated, %d unchanged, %d closed, %d embedded, %d scored, %d semantic-only\n",
+				c.Name, result.Inserted, result.Updated, result.Unchanged, result.Closed, embedded,
+				scoreResult.Scored, scoreResult.SemanticOnly)
 		}
 
 		if synced == 0 {
@@ -163,6 +191,32 @@ func missingToCandidates(missing []store.PostingToEmbed) []dedup.EmbedCandidate 
 		}
 	}
 	return candidates
+}
+
+// changedPostingIDs extracts posting IDs from dedup's change-driven embed
+// candidates: a posting whose content changed needs re-scoring too, since a
+// new description or title can change its fit.
+func changedPostingIDs(candidates []dedup.EmbedCandidate) []int64 {
+	ids := make([]int64, len(candidates))
+	for i, c := range candidates {
+		ids[i] = c.PostingID
+	}
+	return ids
+}
+
+// dedupeIDs merges a and b into a single slice with no duplicate posting IDs.
+func dedupeIDs(a, b []int64) []int64 {
+	seen := make(map[int64]bool, len(a)+len(b))
+	result := make([]int64, 0, len(a)+len(b))
+	for _, ids := range [][]int64{a, b} {
+		for _, id := range ids {
+			if !seen[id] {
+				seen[id] = true
+				result = append(result, id)
+			}
+		}
+	}
+	return result
 }
 
 func init() {
