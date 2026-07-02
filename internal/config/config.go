@@ -68,7 +68,7 @@ func defaults() Config {
 		},
 		LLM: LLMConfig{
 			Provider: "anthropic",
-			Model:    "claude-haiku-4-5-20251001",
+			Model:    "claude-haiku-4-5",
 		},
 		Digest: DigestConfig{
 			Format: "md",
@@ -133,6 +133,16 @@ func (c *Config) RequireDatabase() error {
 func (c *Config) RequireEmbedding() error {
 	if c.Embedding.APIKey == "" {
 		return fmt.Errorf("VOYAGE_API_KEY is not set")
+	}
+	return nil
+}
+
+// RequireLLM returns an error if no Anthropic API key is configured.
+// Callers that need to call the LLM provider should call this before using
+// cfg.LLM.APIKey.
+func (c *Config) RequireLLM() error {
+	if c.LLM.APIKey == "" {
+		return fmt.Errorf("ANTHROPIC_API_KEY is not set")
 	}
 	return nil
 }
