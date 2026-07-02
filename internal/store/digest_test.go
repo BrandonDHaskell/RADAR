@@ -78,7 +78,13 @@ func TestDigestPostings(t *testing.T) {
 	}
 
 	t.Run("no filter returns all open, un-applied postings ranked by verdict then score", func(t *testing.T) {
-		got, err := store.DigestPostings(ctx, pool, "", 10)
+		// DigestPostings ranks across every company, by design (the digest
+		// is a global top-N). A small limit here would make this assertion
+		// depend on how much other data happens to be in the dev database;
+		// this subtest isn't testing the limit, so use a limit high enough
+		// that it can't interfere, and rely on postingIDsForTestCompany to
+		// filter down to what this test created.
+		got, err := store.DigestPostings(ctx, pool, "", 1000)
 		if err != nil {
 			t.Fatalf("DigestPostings: %v", err)
 		}
@@ -90,7 +96,7 @@ func TestDigestPostings(t *testing.T) {
 	})
 
 	t.Run("min-verdict stretch excludes skip and unscored", func(t *testing.T) {
-		got, err := store.DigestPostings(ctx, pool, "stretch", 10)
+		got, err := store.DigestPostings(ctx, pool, "stretch", 1000)
 		if err != nil {
 			t.Fatalf("DigestPostings: %v", err)
 		}
