@@ -22,10 +22,12 @@ var (
 	syncAllowEmpty bool
 )
 
-// syncFetchers maps ats_type to its Fetcher. Only greenhouse is implemented
-// so far (Phase 6 adds lever, ashby, workable behind the same interface).
+// syncFetchers maps ats_type to its Fetcher.
 var syncFetchers = map[string]func(*ingest.Client) ingest.Fetcher{
 	"greenhouse": func(c *ingest.Client) ingest.Fetcher { return ingest.NewGreenhouseFetcher(c) },
+	"lever":      func(c *ingest.Client) ingest.Fetcher { return ingest.NewLeverFetcher(c) },
+	"ashby":      func(c *ingest.Client) ingest.Fetcher { return ingest.NewAshbyFetcher(c) },
+	"workable":   func(c *ingest.Client) ingest.Fetcher { return ingest.NewWorkableFetcher(c) },
 }
 
 var syncCmd = &cobra.Command{

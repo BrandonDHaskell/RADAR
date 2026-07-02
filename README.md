@@ -23,7 +23,7 @@ RADAR is built in phases; each phase is independently useful. Current state:
 | 4 | Fit scoring: semantic similarity + LLM verdict (Claude) | Done |
 | 4.5 | Consolidated matching pipeline: Stage 0 screening, top-K verdict gating, profile hashing | Done |
 | 5 | Digest: Markdown and HTML | Done |
-| 6 | Lever, Ashby, Workable adapters | Not started |
+| 6 | Lever, Ashby, Workable adapters | Done |
 | 7 | Application tracking (`apply`, `log`, `followups`, `close`, `contact`) | Not started (stubs only) |
 | 8 | Background service (`serve`) | Not started (stub only) |
 | 9 | Discovery (`discover`, Built In SF, best-effort) | Not started (stub only) |
@@ -39,7 +39,7 @@ cmd/radar/       CLI (Cobra), thin adapter over internal/
 internal/
   config/        config.yaml + env secrets loading
   store/         Postgres access (pgx), migrations, queries
-  ingest/        Fetcher interface + one adapter per ATS (Greenhouse so far)
+  ingest/        Fetcher interface + one adapter per ATS (Greenhouse, Lever, Ashby, Workable)
   normalize/     canonical key + content hash for dedup and change detection
   dedup/         upsert + expiry orchestration
   embed/         embedding provider interface + Voyage AI implementation
