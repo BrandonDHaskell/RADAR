@@ -1,0 +1,16 @@
+# RADAR Digest ({{.GeneratedAt}})
+{{if not .Entries}}
+No open, un-applied postings matched your criteria.
+{{else}}{{range .Entries}}
+## {{.Title}} at {{.Company}}
+{{if .Verdict}}Verdict: {{.Verdict}}{{if .MatchedRoleTag}} ({{.MatchedRoleTag}}){{end}}
+{{end}}{{if .Location}}Location: {{.Location}}
+{{end}}{{if .SalaryRange}}Salary: {{.SalaryRange}}
+{{end}}{{if .SemanticScore}}Semantic score: {{.SemanticScore}}
+{{end}}
+{{if .Reasoning}}{{.Reasoning}}
+{{end}}
+Apply: {{.ApplyURL}}
+
+---
+{{end}}{{end}}
