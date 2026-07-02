@@ -17,6 +17,7 @@ type Config struct {
 	Database    DatabaseConfig  `yaml:"-"`
 	Embedding   EmbeddingConfig `yaml:"embedding"`
 	LLM         LLMConfig       `yaml:"llm"`
+	Match       MatchConfig     `yaml:"match"`
 	Digest      DigestConfig    `yaml:"digest"`
 	Schedule    ScheduleConfig  `yaml:"schedule"`
 	ProfilePath string          `yaml:"profile_path"`
@@ -51,6 +52,23 @@ type DigestConfig struct {
 	OutPath string `yaml:"out_path"`
 }
 
+// MatchConfig tunes the evaluation pipeline: how many postings get an LLM
+// verdict per run, and the optional local triage tier.
+type MatchConfig struct {
+	LLMTopK          int          `yaml:"llm_top_k"`
+	MinSemanticScore float64      `yaml:"min_semantic_score"`
+	Triage           TriageConfig `yaml:"triage"`
+}
+
+// TriageConfig configures the optional local Stage 1 triage tier (see
+// project spec Section 9). Unimplemented in this phase; Enabled defaults to
+// false and is not currently read by the pipeline.
+type TriageConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+	Model    string `yaml:"model"`
+}
+
 // ScheduleConfig holds cron expressions used by `radar serve`.
 type ScheduleConfig struct {
 	SyncCron   string `yaml:"sync_cron"`
@@ -70,6 +88,14 @@ func defaults() Config {
 		LLM: LLMConfig{
 			Provider: "anthropic",
 			Model:    "claude-haiku-4-5",
+		},
+		Match: MatchConfig{
+			LLMTopK:          40,
+			MinSemanticScore: 0,
+			Triage: TriageConfig{
+				Enabled:  false,
+				Endpoint: "http://localhost:11434",
+			},
 		},
 		Digest: DigestConfig{
 			Format: "md",
@@ -121,6 +147,13 @@ func Load(path string, mustExist bool) (*Config, error) {
 	// expanded here or file paths like profile_path silently fail to open.
 	cfg.ProfilePath = expandHome(cfg.ProfilePath)
 	cfg.Digest.OutPath = expandHome(cfg.Digest.OutPath)
+
+	if cfg.Match.LLMTopK <= 0 {
+		return nil, fmt.Errorf("match.llm_top_k must be greater than 0, got %d", cfg.Match.LLMTopK)
+	}
+	if cfg.Match.MinSemanticScore < 0 || cfg.Match.MinSemanticScore >= 1 {
+		return nil, fmt.Errorf("match.min_semantic_score must be in [0, 1), got %v", cfg.Match.MinSemanticScore)
+	}
 
 	return &cfg, nil
 }

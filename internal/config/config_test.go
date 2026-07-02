@@ -49,6 +49,45 @@ func TestLoadLeavesAbsolutePathsUnchanged(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsMatchConfig(t *testing.T) {
+	cfg, err := Load(filepath.Join(t.TempDir(), "does-not-exist.yaml"), false)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Match.LLMTopK != 40 {
+		t.Errorf("Match.LLMTopK = %d, want 40", cfg.Match.LLMTopK)
+	}
+	if cfg.Match.MinSemanticScore != 0 {
+		t.Errorf("Match.MinSemanticScore = %v, want 0", cfg.Match.MinSemanticScore)
+	}
+	if cfg.Match.Triage.Enabled {
+		t.Error("Match.Triage.Enabled = true, want false by default")
+	}
+}
+
+func TestLoadRejectsInvalidMatchConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{"zero top k", "match:\n  llm_top_k: 0\n"},
+		{"negative top k", "match:\n  llm_top_k: -1\n"},
+		{"negative min score", "match:\n  llm_top_k: 40\n  min_semantic_score: -0.1\n"},
+		{"min score at 1", "match:\n  llm_top_k: 40\n  min_semantic_score: 1.0\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatalf("writing test config: %v", err)
+			}
+			if _, err := Load(path, true); err == nil {
+				t.Error("Load: got nil error, want a validation error")
+			}
+		})
+	}
+}
+
 func TestExpandHome(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

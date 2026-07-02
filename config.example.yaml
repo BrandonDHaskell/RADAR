@@ -10,6 +10,14 @@ llm:
   provider: anthropic
   model: claude-haiku-4-5
 
+match:
+  llm_top_k: 40            # LLM verdicts per run, global across all boards
+  min_semantic_score: 0.0  # optional floor; 0 disables
+  triage:                  # optional local go/no-go tier, not yet implemented
+    enabled: false
+    endpoint: http://localhost:11434
+    model: ""              # operator-chosen Ollama model tag (3B-8B instruct class)
+
 digest:
   format: md
   limit: 10

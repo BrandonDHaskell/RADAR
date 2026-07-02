@@ -38,6 +38,15 @@
   ],
   "preferences": {
     "locations": ["PLACEHOLDER"],
-    "remote_ok": true
+    "remote_ok": true,
+    "title_exclusions": [
+      "executive assistant",
+      "account executive",
+      "sales development",
+      "recruiter",
+      "attorney",
+      "paralegal"
+    ],
+    "_title_exclusions_note": "Case-insensitive whole-phrase matches against the posting title (word-boundary, so an entry never fires on a substring inside another word). Keep entries phrase-level and unambiguous: this list is for postings that could never be one of your five roles, not for borderline cases, which the ranking handles. Ignored by the JSON parser; kept here as guidance only."
   }
 }

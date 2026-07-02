@@ -75,6 +75,38 @@ func TestLoadProfileRejectsMissingSummary(t *testing.T) {
 	}
 }
 
+func TestLoadProfileHashIsStableAndChangesOnEdit(t *testing.T) {
+	content := `{"summary": "A test operator."}`
+	path := writeTestProfile(t, content)
+
+	p1, err := LoadProfile(path)
+	if err != nil {
+		t.Fatalf("LoadProfile: %v", err)
+	}
+	if p1.Hash == "" {
+		t.Fatal("Hash is empty, want a computed SHA-256 hex string")
+	}
+
+	p2, err := LoadProfile(path)
+	if err != nil {
+		t.Fatalf("LoadProfile (second read): %v", err)
+	}
+	if p1.Hash != p2.Hash {
+		t.Errorf("Hash changed across identical reads: %q != %q", p1.Hash, p2.Hash)
+	}
+
+	// Even a whitespace-only edit must change the hash: it is computed over
+	// the raw file bytes, not the parsed structure.
+	path2 := writeTestProfile(t, content+"\n")
+	p3, err := LoadProfile(path2)
+	if err != nil {
+		t.Fatalf("LoadProfile (whitespace edit): %v", err)
+	}
+	if p3.Hash == p1.Hash {
+		t.Error("Hash did not change after a whitespace-only edit, want it to change (raw bytes hashed, not parsed structure)")
+	}
+}
+
 func TestLoadProfileMissingFile(t *testing.T) {
 	if _, err := LoadProfile(filepath.Join(t.TempDir(), "does-not-exist.json")); err == nil {
 		t.Fatal("LoadProfile: got nil error, want an error for a missing file")

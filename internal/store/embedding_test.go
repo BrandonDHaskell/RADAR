@@ -40,16 +40,16 @@ func TestUpsertPostingEmbedding(t *testing.T) {
 
 	vecA := make([]float32, 1024)
 	vecA[0] = 0.5
-	if err := store.UpsertPostingEmbedding(ctx, pool, posting.ID, vecA, "voyage-4"); err != nil {
+	if err := store.UpsertPostingEmbedding(ctx, pool, posting.ID, vecA, "voyage-4", "hash-v1"); err != nil {
 		t.Fatalf("UpsertPostingEmbedding: %v", err)
 	}
 
-	var model string
+	var model, contentHash string
 	var dims int
 	if err := pool.QueryRow(ctx,
-		"SELECT model, vector_dims(embedding) FROM posting_embeddings WHERE posting_id = $1",
+		"SELECT model, vector_dims(embedding), content_hash FROM posting_embeddings WHERE posting_id = $1",
 		posting.ID,
-	).Scan(&model, &dims); err != nil {
+	).Scan(&model, &dims, &contentHash); err != nil {
 		t.Fatalf("querying posting_embeddings: %v", err)
 	}
 	if model != "voyage-4" {
@@ -58,11 +58,14 @@ func TestUpsertPostingEmbedding(t *testing.T) {
 	if dims != 1024 {
 		t.Errorf("vector_dims = %d, want 1024", dims)
 	}
+	if contentHash != "hash-v1" {
+		t.Errorf("content_hash = %q, want %q", contentHash, "hash-v1")
+	}
 
 	// Re-upserting should replace the row, not duplicate it.
 	vecB := make([]float32, 1024)
 	vecB[1] = 0.9
-	if err := store.UpsertPostingEmbedding(ctx, pool, posting.ID, vecB, "voyage-4"); err != nil {
+	if err := store.UpsertPostingEmbedding(ctx, pool, posting.ID, vecB, "voyage-4", "hash-v2"); err != nil {
 		t.Fatalf("UpsertPostingEmbedding (replace): %v", err)
 	}
 
@@ -74,6 +77,16 @@ func TestUpsertPostingEmbedding(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("posting_embeddings row count = %d, want 1 (upsert should replace, not duplicate)", count)
+	}
+
+	var contentHashAfterReplace string
+	if err := pool.QueryRow(ctx,
+		"SELECT content_hash FROM posting_embeddings WHERE posting_id = $1", posting.ID,
+	).Scan(&contentHashAfterReplace); err != nil {
+		t.Fatalf("querying content_hash after replace: %v", err)
+	}
+	if contentHashAfterReplace != "hash-v2" {
+		t.Errorf("content_hash after replace = %q, want %q", contentHashAfterReplace, "hash-v2")
 	}
 
 	// Cosine distance to itself should be ~0.

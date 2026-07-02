@@ -21,6 +21,7 @@ RADAR is built in phases; each phase is independently useful. Current state:
 | 2 | Greenhouse adapter, `sync` (fetch, dedup, expire) | Done |
 | 3 | Profile loading and embeddings (Voyage AI) | Done |
 | 4 | Fit scoring: semantic similarity + LLM verdict (Claude) | Done |
+| 4.5 | Consolidated matching pipeline: Stage 0 screening, top-K verdict gating, profile hashing | Done |
 | 5 | Digest: Markdown and HTML | Done |
 | 6 | Lever, Ashby, Workable adapters | Not started |
 | 7 | Application tracking (`apply`, `log`, `followups`, `close`, `contact`) | Not started (stubs only) |
@@ -43,7 +44,7 @@ internal/
   dedup/         upsert + expiry orchestration
   embed/         embedding provider interface + Voyage AI implementation
   llm/           LLM provider interface + Claude implementation
-  match/         profile loading, semantic + LLM fit scoring
+  match/         profile loading, the staged evaluation pipeline, LLM prompts
   digest/        Markdown/HTML rendering
   track/         applications, correspondence, contacts (Phase 7)
   discover/      company discovery (Phase 9)
@@ -53,6 +54,17 @@ templates/       digest templates, embedded into the binary
 ```
 
 Postgres 16+ with `pgvector` is the only external dependency besides the embedding and LLM APIs. `docker-compose.yml` runs it locally.
+
+### Evaluation pipeline
+
+`radar sync` fetches per company, then runs one corpus-wide evaluation pass over every confirmed board's postings together, so the profile is embedded once per run and ranking is global rather than per company:
+
+1. **Screen** (free, deterministic): title exclusions (`preferences.title_exclusions` in `profile.json`, case-insensitive whole-phrase match) and a location filter, both biased toward false positives passing through rather than hiding a real match. Excluded postings never reach embedding or the LLM. Review what got excluded with `radar excluded`; there is no un-exclude command, correct a wrong exclusion by editing `profile.json`.
+2. **Embed**: any screened-in posting whose embedding is missing or whose content changed since it was last embedded.
+3. **Semantic score**: cosine similarity against the profile, recomputed for every screened-in posting on every run.
+4. **Verdict**: only the top `match.llm_top_k` postings by semantic score (default 40) get an LLM call. A failed or stale verdict (profile edited, or posting content changed) stays in this pool and is retried automatically on the next sync.
+
+Editing `profile.json` invalidates screening and verdicts for the whole corpus on the next sync (cheap: only the shortlist gets re-verdicted) but never touches existing embeddings.
 
 ## Quickstart
 
@@ -65,7 +77,8 @@ docker compose up -d               # starts Postgres + pgvector on localhost:543
 
 # 2. Your profile
 mkdir -p ~/.config/radar
-cp profile.example.json ~/.config/radar/profile.json   # then edit it: your real, verified background
+cp profile.example.json ~/.config/radar/profile.json   # then edit it: your real, verified background,
+                                                         # including preferences.title_exclusions (see Evaluation pipeline below)
 
 # 3. Config (optional; sane defaults apply without this)
 cp config.example.yaml ~/.config/radar/config.yaml
@@ -93,8 +106,9 @@ Secrets (`DATABASE_URL`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`) come from the en
 
 ```
 radar company add|list|confirm|archive   manage the seed list of companies
-radar sync                               fetch, dedupe, embed, and score postings
+radar sync                               fetch, dedupe, then screen/embed/score/verdict the whole corpus
 radar digest                             render the ranked digest (--format md|html, --limit, --min-verdict, --out)
+radar excluded                           list recently excluded postings, for the weekly false-negative review (--limit)
 ```
 
 Everything else (`apply`, `log`, `followups`, `close`, `contact`, `discover`, `serve`) is scaffolded but not yet implemented; see Status above. Run `radar <command> --help` for flags.

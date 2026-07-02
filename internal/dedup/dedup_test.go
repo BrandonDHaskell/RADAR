@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/BrandonDHaskell/RADAR/internal/dedup"
-	"github.com/BrandonDHaskell/RADAR/internal/ingest"
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
@@ -94,66 +93,6 @@ func TestSyncSkipsExpiryOnEmptyFetch(t *testing.T) {
 
 	if queryIsOpen(t, ctx, pool, seed.ID) {
 		t.Error("posting should be closed after Sync with allowEmpty=true")
-	}
-}
-
-func TestSyncPopulatesToEmbed(t *testing.T) {
-	pool := openTestPool(t)
-	ctx := context.Background()
-	token := fmt.Sprintf("test-embed-candidates-%d", time.Now().UnixNano())
-
-	company, err := store.CreateCompany(ctx, pool, store.NewCompany{
-		Name:     "Embed Candidates Co",
-		ATSType:  "greenhouse",
-		ATSToken: token,
-	})
-	if err != nil {
-		t.Fatalf("CreateCompany: %v", err)
-	}
-	t.Cleanup(func() {
-		pool.Exec(context.Background(), "DELETE FROM companies WHERE id = $1", company.ID)
-	})
-
-	posting := ingest.NormalizedPosting{
-		ExternalID:  "ext-1",
-		Title:       "Software Engineer",
-		Description: "Build things.",
-	}
-
-	// First sync: the posting is new, so it must be an embed candidate.
-	first, err := dedup.Sync(ctx, pool, company.ID, "greenhouse", company.Name, []ingest.NormalizedPosting{posting}, false)
-	if err != nil {
-		t.Fatalf("Sync (insert): %v", err)
-	}
-	if len(first.ToEmbed) != 1 {
-		t.Fatalf("Sync (insert): ToEmbed has %d entries, want 1", len(first.ToEmbed))
-	}
-	if first.ToEmbed[0].Text == "" {
-		t.Error("Sync (insert): ToEmbed[0].Text is empty")
-	}
-	postingID := first.ToEmbed[0].PostingID
-
-	// Second sync with identical content: unchanged, must not be re-queued.
-	second, err := dedup.Sync(ctx, pool, company.ID, "greenhouse", company.Name, []ingest.NormalizedPosting{posting}, false)
-	if err != nil {
-		t.Fatalf("Sync (unchanged): %v", err)
-	}
-	if len(second.ToEmbed) != 0 {
-		t.Errorf("Sync (unchanged): ToEmbed has %d entries, want 0", len(second.ToEmbed))
-	}
-
-	// Third sync with a changed description: must be re-queued for embedding.
-	changed := posting
-	changed.Description = "Build different things."
-	third, err := dedup.Sync(ctx, pool, company.ID, "greenhouse", company.Name, []ingest.NormalizedPosting{changed}, false)
-	if err != nil {
-		t.Fatalf("Sync (changed): %v", err)
-	}
-	if len(third.ToEmbed) != 1 {
-		t.Fatalf("Sync (changed): ToEmbed has %d entries, want 1", len(third.ToEmbed))
-	}
-	if third.ToEmbed[0].PostingID != postingID {
-		t.Errorf("Sync (changed): ToEmbed[0].PostingID = %d, want %d", third.ToEmbed[0].PostingID, postingID)
 	}
 }
 
