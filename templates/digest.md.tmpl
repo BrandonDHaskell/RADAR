@@ -1,5 +1,7 @@
 # RADAR Digest ({{.GeneratedAt}})
-{{if not .Entries}}
+{{if .StaleVerdictCount}}
+{{.StaleVerdictCount}} verdicts are stale against the current profile. Run radar sync to refresh.
+{{end}}{{if not .Entries}}
 No open, un-applied postings matched your criteria.
 {{else}}{{range .Entries}}
 ## {{.Title}} at {{.Company}}

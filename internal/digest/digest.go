@@ -25,8 +25,9 @@ const (
 )
 
 type viewModel struct {
-	GeneratedAt string
-	Entries     []entryView
+	GeneratedAt       string
+	Entries           []entryView
+	StaleVerdictCount int
 }
 
 type entryView struct {
@@ -49,6 +50,9 @@ func Render(w io.Writer, format Format, postings []store.DigestPosting) error {
 	}
 	for i, p := range postings {
 		vm.Entries[i] = toView(p)
+		if p.VerdictStale {
+			vm.StaleVerdictCount++
+		}
 	}
 
 	switch format {

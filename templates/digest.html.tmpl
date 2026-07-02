@@ -17,10 +17,14 @@
   a.apply { display: inline-block; margin-top: 0.5rem; color: #0a5cc9; text-decoration: none; font-weight: 600; }
   a.apply:hover { text-decoration: underline; }
   .empty { color: #666; }
+  .stale-notice { color: #8a6500; background: #fff3cd; border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 1rem; font-size: 0.9rem; }
 </style>
 </head>
 <body>
 <h1>RADAR Digest ({{.GeneratedAt}})</h1>
+{{if .StaleVerdictCount}}
+<p class="stale-notice">{{.StaleVerdictCount}} verdicts are stale against the current profile. Run radar sync to refresh.</p>
+{{end}}
 {{if not .Entries}}
 <p class="empty">No open, un-applied postings matched your criteria.</p>
 {{else}}{{range .Entries}}

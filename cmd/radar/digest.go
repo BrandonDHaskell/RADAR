@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/BrandonDHaskell/RADAR/internal/digest"
+	"github.com/BrandonDHaskell/RADAR/internal/match"
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
@@ -20,6 +21,9 @@ var (
 var digestCmd = &cobra.Command{
 	Use:   "digest",
 	Short: "Generate the digest of top open, un-applied postings ranked by fit",
+	Long: "Generate the digest of top open, un-applied postings ranked by fit.\n\n" +
+		"Requires a valid profile.json: the digest computes the profile's current hash to decide whether a stored " +
+		"verdict is still fresh (see profile_path in config.yaml). A missing or invalid profile is an error.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format := digest.Format(cfg.Digest.Format)
 		if cmd.Flags().Changed("format") {
@@ -46,6 +50,11 @@ var digestCmd = &cobra.Command{
 			outPath = digestOut
 		}
 
+		profile, err := match.LoadProfile(cfg.ProfilePath)
+		if err != nil {
+			return fmt.Errorf("loading profile: %w", err)
+		}
+
 		ctx := cmd.Context()
 		pool, err := openDB(ctx)
 		if err != nil {
@@ -53,7 +62,7 @@ var digestCmd = &cobra.Command{
 		}
 		defer pool.Close()
 
-		postings, err := store.DigestPostings(ctx, pool, minVerdict, limit)
+		postings, err := store.DigestPostings(ctx, pool, profile.Hash, minVerdict, limit)
 		if err != nil {
 			return err
 		}

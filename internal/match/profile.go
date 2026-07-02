@@ -4,6 +4,8 @@
 package match
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,10 +37,12 @@ type RoleSummary struct {
 	Summary string `json:"summary"`
 }
 
-// Preferences steers location fit and honest stretch/skip verdicts.
+// Preferences steers location fit, honest stretch/skip verdicts, and
+// Stage 0 screening.
 type Preferences struct {
-	Locations []string `json:"locations"`
-	RemoteOK  bool     `json:"remote_ok"`
+	Locations       []string `json:"locations"`
+	RemoteOK        bool     `json:"remote_ok"`
+	TitleExclusions []string `json:"title_exclusions"`
 }
 
 // Profile is the operator's verified, compact representation of themself,
@@ -53,6 +57,14 @@ type Profile struct {
 	NotableExperience []string      `json:"notable_experience"`
 	KnownGaps         []string      `json:"known_gaps"`
 	Preferences       Preferences   `json:"preferences"`
+
+	// Hash is the lowercase hex SHA-256 of the raw profile.json bytes, as
+	// read from disk before parsing. It is not part of the JSON document;
+	// LoadProfile computes it. Every screening decision and LLM verdict is
+	// checksummed against this value, so any edit to profile.json (screening
+	// preferences, skills, anything) invalidates exactly what depended on
+	// it and nothing more.
+	Hash string `json:"-"`
 }
 
 // LoadProfile reads and validates the profile at path.
@@ -62,10 +74,14 @@ func LoadProfile(path string) (*Profile, error) {
 		return nil, fmt.Errorf("reading profile %s: %w", path, err)
 	}
 
+	sum := sha256.Sum256(data)
+	hash := hex.EncodeToString(sum[:])
+
 	var p Profile
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("parsing profile %s: %w", path, err)
 	}
+	p.Hash = hash
 
 	for i, r := range p.Roles {
 		if r.Tag == automationEngineerTypo {

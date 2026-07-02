@@ -14,7 +14,6 @@ package dedup
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -23,23 +22,18 @@ import (
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
-// EmbedCandidate is a posting whose content is new or changed since the
-// last sync, paired with the text a caller should send to an embedding
-// provider to (re-)populate posting_embeddings.
-type EmbedCandidate struct {
-	PostingID int64
-	Text      string
-}
-
-// Result summarizes what a Sync call did, for CLI reporting.
+// Result summarizes what a Sync call did, for CLI reporting. Which
+// postings need (re-)embedding or (re-)evaluation is not this package's
+// concern: the evaluation pipeline (internal/match) discovers that itself
+// from content_hash, since it runs once per sync corpus-wide rather than
+// per company.
 type Result struct {
 	Inserted      int
 	Updated       int
 	Unchanged     int
 	Closed        int
-	ExpirySkipped bool             // true if the empty-fetch guard skipped expiry
-	OpenAtSkip    int64            // open posting count at the time ExpirySkipped was set
-	ToEmbed       []EmbedCandidate // postings inserted or changed this sync, needing (re-)embedding
+	ExpirySkipped bool  // true if the empty-fetch guard skipped expiry
+	OpenAtSkip    int64 // open posting count at the time ExpirySkipped was set
 }
 
 // Sync upserts postings fetched for companyID/source and closes any
@@ -96,13 +90,6 @@ func Sync(ctx context.Context, pool *pgxpool.Pool, companyID int64, source, comp
 		default:
 			res.Unchanged++
 		}
-
-		if upsertResult.Changed {
-			res.ToEmbed = append(res.ToEmbed, EmbedCandidate{
-				PostingID: upsertResult.ID,
-				Text:      FormatEmbeddingText(companyName, p.Title, p.Department, p.Location, p.Description),
-			})
-		}
 	}
 
 	closed, err := store.ExpirePostings(ctx, pool, companyID, source, seenExternalIDs)
@@ -112,25 +99,4 @@ func Sync(ctx context.Context, pool *pgxpool.Pool, companyID int64, source, comp
 	res.Closed = int(closed)
 
 	return res, nil
-}
-
-// FormatEmbeddingText composes the text sent to the embedding provider for
-// a posting: the fields that carry its semantic content. It is shared by
-// Sync's own change-driven candidates and by any caller backfilling
-// postings that are missing an embedding entirely (see
-// store.PostingsMissingEmbedding).
-func FormatEmbeddingText(companyName, title, department, location, description string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s at %s\n", title, companyName)
-	if department != "" {
-		fmt.Fprintf(&b, "Department: %s\n", department)
-	}
-	if location != "" {
-		fmt.Fprintf(&b, "Location: %s\n", location)
-	}
-	if description != "" {
-		b.WriteString("\n")
-		b.WriteString(description)
-	}
-	return strings.TrimSpace(b.String())
 }

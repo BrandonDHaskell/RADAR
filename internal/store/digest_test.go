@@ -9,6 +9,8 @@ import (
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
 
+const testDigestProfileHash = "test-profile-hash-v1"
+
 func TestDigestPostings(t *testing.T) {
 	pool := openTestPool(t)
 	ctx := context.Background()
@@ -26,7 +28,7 @@ func TestDigestPostings(t *testing.T) {
 		pool.Exec(context.Background(), "DELETE FROM companies WHERE id = $1", company.ID)
 	})
 
-	mustUpsertPosting := func(externalID, title string) int64 {
+	mustUpsertPosting := func(externalID, title, contentHash string) int64 {
 		t.Helper()
 		p, err := store.UpsertPosting(ctx, pool, store.PostingUpsert{
 			CompanyID:    company.ID,
@@ -34,69 +36,150 @@ func TestDigestPostings(t *testing.T) {
 			ExternalID:   externalID,
 			Title:        title,
 			CanonicalKey: fmt.Sprintf("digest test co|%s|", title),
-			ContentHash:  "hash-" + externalID,
+			ContentHash:  contentHash,
 		})
 		if err != nil {
 			t.Fatalf("UpsertPosting(%s): %v", externalID, err)
 		}
 		return p.ID
 	}
-	mustSetFitScore := func(postingID int64, verdict string, semanticScore float32) {
+	mustSetSemanticScore := func(postingID int64, score float32) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO fit_scores (posting_id, semantic_score, computed_at)
+			VALUES ($1, $2, now())
+			ON CONFLICT (posting_id) DO UPDATE SET semantic_score = EXCLUDED.semantic_score
+		`, postingID, score); err != nil {
+			t.Fatalf("seeding semantic score for %d: %v", postingID, err)
+		}
+	}
+	// mustSetVerdict writes a fresh verdict: hashes matching
+	// testDigestProfileHash and the posting's own content hash.
+	mustSetVerdict := func(postingID int64, verdict, contentHash string) {
 		t.Helper()
 		v := verdict
-		if err := store.UpsertFitScore(ctx, pool, store.FitScore{
-			PostingID:     postingID,
-			SemanticScore: &semanticScore,
-			LLMVerdict:    &v,
+		ph := testDigestProfileHash
+		ch := contentHash
+		if err := store.UpsertVerdict(ctx, pool, store.Verdict{
+			PostingID:          postingID,
+			LLMVerdict:         &v,
+			VerdictProfileHash: &ph,
+			VerdictContentHash: &ch,
 		}); err != nil {
-			t.Fatalf("UpsertFitScore(%d): %v", postingID, err)
+			t.Fatalf("UpsertVerdict(%d): %v", postingID, err)
+		}
+	}
+	// mustSetStaleVerdict writes a verdict computed against a different
+	// profile and content version, simulating a profile edit or posting
+	// content change since the verdict was written.
+	mustSetStaleVerdict := func(postingID int64, verdict string) {
+		t.Helper()
+		v := verdict
+		staleProfileHash := "old-profile-hash"
+		staleContentHash := "old-content-hash"
+		if err := store.UpsertVerdict(ctx, pool, store.Verdict{
+			PostingID:          postingID,
+			LLMVerdict:         &v,
+			VerdictProfileHash: &staleProfileHash,
+			VerdictContentHash: &staleContentHash,
+		}); err != nil {
+			t.Fatalf("UpsertVerdict(%d): %v", postingID, err)
 		}
 	}
 
-	pursueID := mustUpsertPosting("pursue", "Pursue Role")
-	mustSetFitScore(pursueID, "pursue", 0.9)
+	pursueID := mustUpsertPosting("pursue", "Pursue Role", "hash-pursue")
+	mustSetSemanticScore(pursueID, 0.9)
+	mustSetVerdict(pursueID, "pursue", "hash-pursue")
 
-	stretchID := mustUpsertPosting("stretch", "Stretch Role")
-	mustSetFitScore(stretchID, "stretch", 0.5)
+	stretchID := mustUpsertPosting("stretch", "Stretch Role", "hash-stretch")
+	mustSetSemanticScore(stretchID, 0.5)
+	mustSetVerdict(stretchID, "stretch", "hash-stretch")
 
-	skipID := mustUpsertPosting("skip", "Skip Role")
-	mustSetFitScore(skipID, "skip", 0.2)
+	skipID := mustUpsertPosting("skip", "Skip Role", "hash-skip")
+	mustSetSemanticScore(skipID, 0.2)
+	mustSetVerdict(skipID, "skip", "hash-skip")
 
-	unscoredID := mustUpsertPosting("unscored", "Unscored Role")
+	// A verdict exists but is stale (hash mismatch): it must rank as if
+	// unscored (rank 0) despite a high raw semantic score, and be reported
+	// via VerdictStale rather than shown.
+	staleID := mustUpsertPosting("stale", "Stale Verdict Role", "hash-stale")
+	mustSetSemanticScore(staleID, 0.6)
+	mustSetStaleVerdict(staleID, "pursue")
+
+	unscoredID := mustUpsertPosting("unscored", "Unscored Role", "hash-unscored")
 	// deliberately no fit_scores row
 
-	appliedID := mustUpsertPosting("applied", "Already Applied Role")
-	mustSetFitScore(appliedID, "pursue", 0.99)
+	appliedID := mustUpsertPosting("applied", "Already Applied Role", "hash-applied")
+	mustSetSemanticScore(appliedID, 0.99)
+	mustSetVerdict(appliedID, "pursue", "hash-applied")
 	if _, err := pool.Exec(ctx, "INSERT INTO applications (posting_id, status) VALUES ($1, 'identified')", appliedID); err != nil {
 		t.Fatalf("seeding application: %v", err)
 	}
 
-	closedID := mustUpsertPosting("closed", "Closed Role")
-	mustSetFitScore(closedID, "pursue", 0.99)
+	closedID := mustUpsertPosting("closed", "Closed Role", "hash-closed")
+	mustSetSemanticScore(closedID, 0.99)
+	mustSetVerdict(closedID, "pursue", "hash-closed")
 	if _, err := pool.Exec(ctx, "UPDATE postings SET is_open = false WHERE id = $1", closedID); err != nil {
 		t.Fatalf("closing posting: %v", err)
 	}
 
-	t.Run("no filter returns all open, un-applied postings ranked by verdict then score", func(t *testing.T) {
+	excludedID := mustUpsertPosting("excluded", "Excluded Role", "hash-excluded")
+	mustSetSemanticScore(excludedID, 0.99)
+	mustSetVerdict(excludedID, "pursue", "hash-excluded")
+	if _, err := pool.Exec(ctx, "UPDATE postings SET screen_status = 'excluded', screen_reason = 'title_exclusion:test' WHERE id = $1", excludedID); err != nil {
+		t.Fatalf("excluding posting: %v", err)
+	}
+
+	t.Run("no filter returns all open, screened-in, un-applied postings ranked by fresh verdict then score", func(t *testing.T) {
 		// DigestPostings ranks across every company, by design (the digest
 		// is a global top-N). A small limit here would make this assertion
 		// depend on how much other data happens to be in the dev database;
 		// this subtest isn't testing the limit, so use a limit high enough
 		// that it can't interfere, and rely on postingIDsForTestCompany to
 		// filter down to what this test created.
-		got, err := store.DigestPostings(ctx, pool, "", 1000)
+		got, err := store.DigestPostings(ctx, pool, testDigestProfileHash, "", 1000)
 		if err != nil {
 			t.Fatalf("DigestPostings: %v", err)
 		}
 		ids := postingIDsForTestCompany(got)
-		want := []int64{pursueID, stretchID, skipID, unscoredID}
+		// staleID (semantic 0.6, but stale) ranks below skipID (rank 1) and
+		// above unscoredID (no semantic score at all).
+		want := []int64{pursueID, stretchID, skipID, staleID, unscoredID}
 		if !idsEqual(ids, want) {
 			t.Errorf("DigestPostings ids = %v, want %v (in order)", ids, want)
 		}
 	})
 
-	t.Run("min-verdict stretch excludes skip and unscored", func(t *testing.T) {
-		got, err := store.DigestPostings(ctx, pool, "stretch", 1000)
+	t.Run("stale verdict is hidden and reported, applied and closed and screened-out postings are absent", func(t *testing.T) {
+		got, err := store.DigestPostings(ctx, pool, testDigestProfileHash, "", 1000)
+		if err != nil {
+			t.Fatalf("DigestPostings: %v", err)
+		}
+		byID := make(map[int64]store.DigestPosting)
+		for _, p := range got {
+			byID[p.ID] = p
+		}
+
+		stale, ok := byID[staleID]
+		if !ok {
+			t.Fatal("stale posting missing from digest, want it present with a hidden verdict")
+		}
+		if !stale.VerdictStale {
+			t.Error("stale posting: VerdictStale = false, want true")
+		}
+		if stale.LLMVerdict != nil {
+			t.Errorf("stale posting: LLMVerdict = %v, want nil (stale verdicts are hidden)", *stale.LLMVerdict)
+		}
+
+		for _, id := range []int64{appliedID, closedID, excludedID} {
+			if _, present := byID[id]; present {
+				t.Errorf("posting %d should be absent from the digest (applied, closed, or excluded)", id)
+			}
+		}
+	})
+
+	t.Run("min-verdict stretch excludes skip, stale, and unscored", func(t *testing.T) {
+		got, err := store.DigestPostings(ctx, pool, testDigestProfileHash, "stretch", 1000)
 		if err != nil {
 			t.Fatalf("DigestPostings: %v", err)
 		}
@@ -108,7 +191,7 @@ func TestDigestPostings(t *testing.T) {
 	})
 
 	t.Run("limit truncates the result", func(t *testing.T) {
-		got, err := store.DigestPostings(ctx, pool, "", 1)
+		got, err := store.DigestPostings(ctx, pool, testDigestProfileHash, "", 1)
 		if err != nil {
 			t.Fatalf("DigestPostings: %v", err)
 		}
@@ -118,7 +201,7 @@ func TestDigestPostings(t *testing.T) {
 	})
 
 	t.Run("invalid min-verdict is rejected", func(t *testing.T) {
-		if _, err := store.DigestPostings(ctx, pool, "maybe", 10); err == nil {
+		if _, err := store.DigestPostings(ctx, pool, testDigestProfileHash, "maybe", 10); err == nil {
 			t.Error("DigestPostings(min-verdict=maybe): got nil error, want an error")
 		}
 	})

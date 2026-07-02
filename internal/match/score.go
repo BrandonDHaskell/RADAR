@@ -1,101 +1,12 @@
 package match
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/BrandonDHaskell/RADAR/internal/embed"
 	"github.com/BrandonDHaskell/RADAR/internal/llm"
 	"github.com/BrandonDHaskell/RADAR/internal/store"
 )
-
-// ScoreResult summarizes what ScorePostings did, for CLI reporting.
-type ScoreResult struct {
-	Scored       int // semantic score and LLM verdict both computed
-	SemanticOnly int // LLM verdict failed; semantic score alone was stored
-}
-
-// ScorePostings computes semantic and LLM fit scores for postingIDs against
-// profile and writes the results to fit_scores.
-//
-// If the LLM verdict fails for a posting (provider error, malformed
-// output, or a hallucinated role tag), that posting still gets its
-// semantic score stored and is flagged in llm_reasoning rather than being
-// silently dropped: the project spec requires parsing the LLM response
-// defensively and falling back to semantic-only scoring on failure.
-func ScorePostings(ctx context.Context, pool *pgxpool.Pool, embedder embed.Provider, llmProvider llm.Provider, llmModel string, profile *Profile, postingIDs []int64) (ScoreResult, error) {
-	var res ScoreResult
-	if len(postingIDs) == 0 {
-		return res, nil
-	}
-
-	profileVectors, err := embedder.Embed(ctx, []string{profile.EmbeddingText()}, embed.InputTypeQuery)
-	if err != nil {
-		return res, fmt.Errorf("embedding profile: %w", err)
-	}
-	profileVector := profileVectors[0]
-
-	semanticScores, err := store.SemanticScores(ctx, pool, profileVector, postingIDs)
-	if err != nil {
-		return res, err
-	}
-	semanticByID := make(map[int64]float32, len(semanticScores))
-	for _, s := range semanticScores {
-		semanticByID[s.PostingID] = s.Score
-	}
-
-	details, err := store.PostingDetails(ctx, pool, postingIDs)
-	if err != nil {
-		return res, err
-	}
-
-	systemPrompt := buildSystemPrompt(profile)
-
-	for _, d := range details {
-		var semanticPtr *float32
-		if s, ok := semanticByID[d.ID]; ok {
-			semanticPtr = &s
-		}
-
-		verdict, err := llmProvider.FitVerdict(ctx, systemPrompt, buildUserPrompt(d))
-		if err != nil || !isValidVerdict(verdict) {
-			reason := "semantic score only: LLM verdict unavailable"
-			if err != nil {
-				reason = fmt.Sprintf("semantic score only: LLM verdict failed (%v)", err)
-			} else if verdict != nil {
-				reason = fmt.Sprintf("semantic score only: LLM returned an invalid verdict %q / role tag %q", verdict.Verdict, verdict.MatchedRoleTag)
-			}
-			if upsertErr := store.UpsertFitScore(ctx, pool, store.FitScore{
-				PostingID:     d.ID,
-				SemanticScore: semanticPtr,
-				LLMReasoning:  &reason,
-			}); upsertErr != nil {
-				return res, upsertErr
-			}
-			res.SemanticOnly++
-			continue
-		}
-
-		model := llmModel
-		if upsertErr := store.UpsertFitScore(ctx, pool, store.FitScore{
-			PostingID:      d.ID,
-			SemanticScore:  semanticPtr,
-			LLMVerdict:     &verdict.Verdict,
-			LLMScore:       verdict.Score,
-			LLMReasoning:   &verdict.Reasoning,
-			MatchedRoleTag: &verdict.MatchedRoleTag,
-			Model:          &model,
-		}); upsertErr != nil {
-			return res, upsertErr
-		}
-		res.Scored++
-	}
-
-	return res, nil
-}
 
 // isValidVerdict rejects a response that structured outputs should have
 // already prevented, but that the pipeline must not trust unconditionally:
@@ -116,6 +27,9 @@ func isValidVerdict(v *llm.Verdict) bool {
 	return false
 }
 
+// buildSystemPrompt is frozen: the honesty language here must not change
+// without a deliberate, separately reviewed decision. Restructure callers
+// around it rather than editing it in passing.
 func buildSystemPrompt(profile *Profile) string {
 	var b strings.Builder
 	b.WriteString("You are assessing job posting fit for a real job seeker against their verified professional profile. ")

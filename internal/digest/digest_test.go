@@ -97,6 +97,35 @@ func TestRenderEmptyShowsNoMatchesMessage(t *testing.T) {
 	}
 }
 
+func TestRenderShowsStaleVerdictSummary(t *testing.T) {
+	postings := []store.DigestPosting{
+		{ID: 1, Title: "Fresh Role", CompanyName: "Acme", VerdictStale: false},
+		{ID: 2, Title: "Stale Role", CompanyName: "Acme", VerdictStale: true},
+	}
+	for _, format := range []Format{FormatMarkdown, FormatHTML} {
+		var buf bytes.Buffer
+		if err := Render(&buf, format, postings); err != nil {
+			t.Fatalf("Render(%s): %v", format, err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "1 verdicts are stale against the current profile") {
+			t.Errorf("Render(%s) = %q, want the stale-verdict summary line", format, out)
+		}
+	}
+}
+
+func TestRenderOmitsStaleVerdictSummaryWhenNoneStale(t *testing.T) {
+	for _, format := range []Format{FormatMarkdown, FormatHTML} {
+		var buf bytes.Buffer
+		if err := Render(&buf, format, samplePostings()); err != nil {
+			t.Fatalf("Render(%s): %v", format, err)
+		}
+		if strings.Contains(buf.String(), "verdicts are stale") {
+			t.Errorf("Render(%s) unexpectedly mentions stale verdicts when none are stale", format)
+		}
+	}
+}
+
 func TestRenderRejectsUnknownFormat(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Render(&buf, Format("yaml"), samplePostings()); err == nil {
