@@ -1,0 +1,23 @@
+{
+  "summary": "PLACEHOLDER: one to three sentences describing your verified background.",
+  "role_tags": [
+    "business-systems-analyst",
+    "implementation-specialist",
+    "technical-program-manager",
+    "technical-support-engineer",
+    "automation-engineer"
+  ],
+  "verified_skills": [
+    "PLACEHOLDER: only list skills you can defend in a technical follow-up"
+  ],
+  "notable_experience": [
+    "PLACEHOLDER: one line per role or project worth surfacing"
+  ],
+  "known_gaps": [
+    "PLACEHOLDER: be honest here, it steers stretch/skip verdicts"
+  ],
+  "preferences": {
+    "locations": ["PLACEHOLDER"],
+    "remote_ok": true
+  }
+}

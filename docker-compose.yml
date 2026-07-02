@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-radar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radar_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-radar}
+    ports:
+      - "5432:5432"
+    volumes:
+      - radar_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radar} -d ${POSTGRES_DB:-radar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  radar_pgdata:
