@@ -3,7 +3,7 @@
 
 embedding:
   provider: voyage
-  model: voyage-3
+  model: voyage-4
   dimension: 1024  # must match the model above and the posting_embeddings column
 
 llm:
