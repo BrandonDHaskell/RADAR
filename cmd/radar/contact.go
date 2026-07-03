@@ -1,6 +1,15 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"os"
+	"slices"
+	"text/tabwriter"
+
+	"github.com/spf13/cobra"
+
+	"github.com/BrandonDHaskell/RADAR/internal/store"
+)
 
 var contactCmd = &cobra.Command{
 	Use:   "contact",
@@ -17,13 +26,60 @@ var (
 var contactAddCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a contact",
-	RunE:  notImplemented,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if contactAddType != "" && !slices.Contains(store.ContactTypes, contactAddType) {
+			return fmt.Errorf("--type must be one of %v", store.ContactTypes)
+		}
+
+		ctx := cmd.Context()
+		pool, err := openDB(ctx)
+		if err != nil {
+			return err
+		}
+		defer pool.Close()
+
+		c, err := store.CreateContact(ctx, pool, store.NewContact{
+			CompanyID: contactAddCompany,
+			Name:      contactAddName,
+			Type:      contactAddType,
+			Email:     contactAddEmail,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("added contact %d: %s (company %d)\n", c.ID, c.Name, c.CompanyID)
+		return nil
+	},
 }
 
 var contactListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List contacts",
-	RunE:  notImplemented,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+		pool, err := openDB(ctx)
+		if err != nil {
+			return err
+		}
+		defer pool.Close()
+
+		contacts, err := store.ListContacts(ctx, pool)
+		if err != nil {
+			return err
+		}
+		if len(contacts) == 0 {
+			fmt.Println("no contacts found")
+			return nil
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tNAME\tCOMPANY\tTYPE\tEMAIL")
+		for _, c := range contacts {
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", c.ID, c.Name, c.CompanyName, c.Type, c.Email)
+		}
+		return w.Flush()
+	},
 }
 
 func init() {
