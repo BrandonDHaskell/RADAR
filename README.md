@@ -24,7 +24,7 @@ RADAR is built in phases; each phase is independently useful. Current state:
 | 4.5 | Consolidated matching pipeline: Stage 0 screening, top-K verdict gating, profile hashing | Done |
 | 5 | Digest: Markdown and HTML | Done |
 | 6 | Lever, Ashby, Workable adapters | Done |
-| 7 | Application tracking (`apply`, `log`, `followups`, `close`, `contact`) | Not started (stubs only) |
+| 7 | Application tracking (`apply`, `log`, `followups`, `close`, `contact`) | Done |
 | 8 | Background service (`serve`) | Not started (stub only) |
 | 9 | Discovery (`discover`, Built In SF, best-effort) | Not started (stub only) |
 
@@ -38,7 +38,7 @@ Single Go binary, two modes: one-shot CLI commands today, plus a future `serve` 
 cmd/radar/       CLI (Cobra), thin adapter over internal/
 internal/
   config/        config.yaml + env secrets loading
-  store/         Postgres access (pgx), migrations, queries
+  store/         Postgres access (pgx), migrations, queries (including applications, correspondence, contacts)
   ingest/        Fetcher interface + one adapter per ATS (Greenhouse, Lever, Ashby, Workable)
   normalize/     canonical key + content hash for dedup and change detection
   dedup/         upsert + expiry orchestration
@@ -46,7 +46,6 @@ internal/
   llm/           LLM provider interface + Claude implementation
   match/         profile loading, the staged evaluation pipeline, LLM prompts
   digest/        Markdown/HTML rendering
-  track/         applications, correspondence, contacts (Phase 7)
   discover/      company discovery (Phase 9)
   schedule/      cron wiring for serve mode (Phase 8)
 migrations/      SQL migrations, embedded into the binary
@@ -109,9 +108,14 @@ radar company add|list|confirm|archive   manage the seed list of companies
 radar sync                               fetch, dedupe, then screen/embed/score/verdict the whole corpus
 radar digest                             render the ranked digest (--format md|html, --limit, --min-verdict, --out)
 radar excluded                           list recently excluded postings, for the weekly false-negative review (--limit)
+radar apply <posting_id>                 mark a posting applied (--resume-variant, --cover-letter, --follow-up)
+radar log <application_id>               log a correspondence entry (--direction, --channel, --summary, --contact, --follow-up[-date])
+radar followups                          list applications due for follow-up today (--stale N also surfaces no-activity applications)
+radar close <application_id>             close out an application (--status closed_offer|closed_rejected|withdrawn)
+radar contact add|list                   manage contacts (--company, --name, --type, --email)
 ```
 
-Everything else (`apply`, `log`, `followups`, `close`, `contact`, `discover`, `serve`) is scaffolded but not yet implemented; see Status above. Run `radar <command> --help` for flags.
+Everything else (`discover`, `serve`) is scaffolded but not yet implemented; see Status above. Run `radar <command> --help` for flags.
 
 ## Development
 
