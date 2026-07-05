@@ -28,6 +28,7 @@ var syncFetchers = map[string]func(*ingest.Client) ingest.Fetcher{
 	"lever":      func(c *ingest.Client) ingest.Fetcher { return ingest.NewLeverFetcher(c) },
 	"ashby":      func(c *ingest.Client) ingest.Fetcher { return ingest.NewAshbyFetcher(c) },
 	"workable":   func(c *ingest.Client) ingest.Fetcher { return ingest.NewWorkableFetcher(c) },
+	"dayforce":   func(c *ingest.Client) ingest.Fetcher { return ingest.NewDayforceFetcher(c) },
 }
 
 var syncCmd = &cobra.Command{
@@ -135,7 +136,7 @@ var syncCmd = &cobra.Command{
 }
 
 func init() {
-	syncCmd.Flags().StringVar(&syncSource, "source", "", "limit sync to one ATS (greenhouse|lever|ashby|workable)")
+	syncCmd.Flags().StringVar(&syncSource, "source", "", "limit sync to one ATS (greenhouse|lever|ashby|workable|dayforce)")
 	syncCmd.Flags().Int64Var(&syncCompany, "company", 0, "limit sync to one company id")
 	syncCmd.Flags().StringVar(&syncSince, "since", "", "only re-check companies last synced before this duration ago (not yet implemented)")
 	syncCmd.Flags().BoolVar(&syncAllowEmpty, "allow-empty", false, "allow a 0-posting fetch to close all open postings for that company/source")

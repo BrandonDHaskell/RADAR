@@ -136,7 +136,7 @@ func setCompanyStatusRunE(status string) func(cmd *cobra.Command, args []string)
 
 func init() {
 	companyAddCmd.Flags().StringVar(&companyAddName, "name", "", "company name (required)")
-	companyAddCmd.Flags().StringVar(&companyAddATS, "ats", "none", "ATS type: greenhouse|lever|ashby|workable|none")
+	companyAddCmd.Flags().StringVar(&companyAddATS, "ats", "none", "ATS type: greenhouse|lever|ashby|workable|dayforce|none")
 	companyAddCmd.Flags().StringVar(&companyAddToken, "token", "", "ATS board token / site / subdomain")
 	companyAddCmd.Flags().StringVar(&companyAddWebsite, "website", "", "company website URL")
 	companyAddCmd.Flags().StringVar(&companyAddNotes, "notes", "", "free-form notes")
