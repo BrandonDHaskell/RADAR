@@ -12,7 +12,7 @@ import (
 )
 
 // ValidATSTypes are the ats_type values accepted by the companies table.
-var ValidATSTypes = []string{"greenhouse", "lever", "ashby", "workable", "none"}
+var ValidATSTypes = []string{"greenhouse", "lever", "ashby", "workable", "dayforce", "none"}
 
 // CompanyStatuses are the status values a company can hold. Status answers
 // exactly one question: should sync consider this board (confirmed) or not
